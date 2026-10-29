@@ -77,6 +77,23 @@
       </p>
     </div>
 
+    <!-- Firebase Error Diagnostic Alert (Shown dynamically if connection fails) -->
+    <div id="firebaseErrorAlert" class="hidden bg-rose-50 border-2 border-rose-300 rounded-2xl p-4 text-xs text-rose-900 space-y-2 shadow-sm">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2 font-bold text-sm text-rose-800">
+          <i class="fa-solid fa-triangle-exclamation text-base text-rose-600"></i>
+          <span>Firebase 連線診斷提示</span>
+        </div>
+        <button onclick="document.getElementById('firebaseErrorAlert').classList.add('hidden')" class="text-rose-600 hover:text-rose-800 font-bold text-xs">關閉</button>
+      </div>
+      <div id="firebaseErrorMessage" class="leading-relaxed font-mono bg-white p-2.5 rounded-xl border border-rose-200 text-rose-700 text-xs">
+        載入診斷訊息中...
+      </div>
+      <div id="firebaseErrorSolution" class="text-xs text-rose-800 leading-relaxed font-sans pt-1">
+        <!-- Dynamic solution instructions rendered by JS -->
+      </div>
+    </div>
+
     <!-- Room Completion & Violation Dashboard (NEW Prominent Section) -->
     <section class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-amber-100 space-y-4">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
@@ -379,7 +396,6 @@
         try {
           this.updateSyncBadge('loading', '雲端建立連線中...');
 
-          // 檢查是否部署在 GitHub 且尚未設定自己的 Firebase 金鑰
           if (firebaseConfig.apiKey === "YOUR_FIREBASE_API_KEY") {
             const notice = document.getElementById('githubSetupNotice');
             if (notice) notice.classList.remove('hidden');
@@ -392,26 +408,85 @@
           this.db = getFirestore(this.app);
           this.auth = getAuth(this.app);
 
-          // Auth Before Queries
-          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-            await signInWithCustomToken(this.auth, __initial_auth_token);
-          } else {
-            await signInAnonymously(this.auth);
+          // Attempt Authentication with error handling
+          try {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+              await signInWithCustomToken(this.auth, __initial_auth_token);
+            } else {
+              await signInAnonymously(this.auth);
+            }
+          } catch (authErr) {
+            console.warn("Firebase Auth Warning:", authErr);
+            this.handleFirebaseError(authErr, 'Auth');
           }
 
           onAuthStateChanged(this.auth, (user) => {
             if (user) {
               this.currentUser = user;
-              this.updateSyncBadge('online', '已連線至您的 Firebase 資料庫');
-              this.listenToFirestore();
             }
           });
 
+          // Connect to Firestore Listener
+          this.listenToFirestore();
+
         } catch (err) {
-          console.warn("Firebase initialized with local state mode:", err);
-          this.updateSyncBadge('offline', '連線失敗 (請檢查 Firebase 設定)');
+          console.error("Firebase initialized failed:", err);
+          this.handleFirebaseError(err, 'Init');
+          this.updateSyncBadge('offline', '連線失敗 (請查看下方提示)');
           this.renderUI();
         }
+      }
+
+      // Handle and Display Detailed Firebase Diagnostics with Exact Solutions
+      handleFirebaseError(err, context = '') {
+        console.error(`Firebase Error [${context}]:`, err);
+        const alertBox = document.getElementById('firebaseErrorAlert');
+        const msgEl = document.getElementById('firebaseErrorMessage');
+        const solEl = document.getElementById('firebaseErrorSolution');
+        if (!alertBox || !msgEl || !solEl) return;
+
+        alertBox.classList.remove('hidden');
+        const errCode = err.code || err.message || 'UNKNOWN_ERROR';
+        msgEl.innerText = `[錯誤代碼/訊息]: ${errCode}`;
+
+        let solutionHTML = '';
+
+        if (errCode.includes('auth/operation-not-allowed')) {
+          solutionHTML = `
+            <strong>💡 解法說明：</strong>您尚未在 Firebase Console 開啟「匿名登入」！<br/>
+            👉 請至 <a href="https://console.firebase.google.com/" target="_blank" class="underline font-bold text-rose-900">Firebase Console</a> ➔ 點選 <strong>Authentication</strong> ➔ 選擇 <strong>Sign-in method</strong> 頁籤 ➔ 找到 <strong>匿名 (Anonymous)</strong> 並開啟儲存。
+          `;
+        } else if (errCode.includes('auth/unauthorized-domain')) {
+          solutionHTML = `
+            <strong>💡 解法說明：</strong>GitHub 網域尚未加入 Firebase 授權名單！<br/>
+            👉 請至 <a href="https://console.firebase.google.com/" target="_blank" class="underline font-bold text-rose-900">Firebase Console</a> ➔ 點選 <strong>Authentication</strong> ➔ 選擇 <strong>Settings</strong> 頁籤 ➔ 找到 <strong>Authorized domains (授權網域)</strong> ➔ 點選「新增網域」並輸入您的 GitHub 網頁網域（例如 <code class="bg-rose-100 px-1 rounded">your-username.github.io</code>）。
+          `;
+        } else if (errCode.includes('permission-denied')) {
+          solutionHTML = `
+            <strong>💡 解法說明：</strong>Firestore 資料庫存取權限被拒絕！<br/>
+            👉 請至 <a href="https://console.firebase.google.com/" target="_blank" class="underline font-bold text-rose-900">Firebase Console</a> ➔ 點選 <strong>Firestore Database</strong> ➔ 選擇 <strong>Rules (規則)</strong> 頁籤 ➔ 貼上以下規則並點擊「發布」：<br/>
+            <pre class="bg-rose-100/80 p-2 rounded text-[11px] mt-1 font-mono">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} { allow read, write: if true; }
+  }
+}</pre>
+          `;
+        } else if (errCode.includes('not-found') || errCode.includes('failed-precondition')) {
+          solutionHTML = `
+            <strong>💡 解法說明：</strong>專案中尚未建立 Firestore 資料庫！<br/>
+            👉 請至 <a href="https://console.firebase.google.com/" target="_blank" class="underline font-bold text-rose-900">Firebase Console</a> ➔ 點選左側 <strong>Firestore Database</strong> ➔ 點擊「建立資料庫」並選擇「以測試模式開始」。
+          `;
+        } else {
+          solutionHTML = `
+            <strong>💡 排查建議：</strong><br/>
+            1. 請確認 Firebase Console 中的 Authentication 匿名登入已開啟。<br/>
+            2. 請確認 Firestore Database 已建立且 Rules 設為允許讀寫。<br/>
+            3. 若使用 GitHub Pages，請至 Authentication ➔ Settings ➔ Authorized Domains 將您的 GitHub 網域加入授權。
+          `;
+        }
+
+        solEl.innerHTML = solutionHTML;
       }
 
       // Strict Paths - Firestore Listener
@@ -427,17 +502,27 @@
               snapshot.forEach((doc) => {
                 this.firestoreRecords[doc.id] = doc.data();
               });
-              this.updateSyncBadge('online', '雲端資料已即時同步');
+              // Hide error alert if successfully connected
+              const alertBox = document.getElementById('firebaseErrorAlert');
+              if (alertBox) alertBox.classList.add('hidden');
+              
+              this.updateSyncBadge('online', '已連線至您的 Firebase 資料庫');
               this.renderUI();
             },
             (error) => {
               console.error("Firestore Listen Error:", error);
-              this.updateSyncBadge('offline', '同步發生錯誤');
+              this.handleFirebaseError(error, 'Firestore');
+              let errorMsg = "同步發生錯誤";
+              if (error.code === 'permission-denied') {
+                errorMsg = "權限不足 (請檢查 Firestore 規則 Rules)";
+              }
+              this.updateSyncBadge('offline', errorMsg);
               this.renderUI();
             }
           );
         } catch (err) {
           console.error("Error setting up listener:", err);
+          this.handleFirebaseError(err, 'ListenerSetup');
           this.updateSyncBadge('offline', '資料庫監聽設定失敗');
         }
       }
