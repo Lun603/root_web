@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>租屋處值日生班表 & 雲端簽到系統</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <!-- Google Font: Noto Sans TC -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-amber-50/40 text-slate-800 min-h-screen flex flex-col antialiased">
+
+  <!-- Main Container -->
+  <div id="app" class="flex-1 flex flex-col max-w-7xl w-full mx-auto p-3 sm:p-6 space-y-6">
+
+    <!-- Header Navigation Bar -->
+    <header class="bg-white rounded-2xl shadow-sm border border-amber-100 p-4 sm:p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-12 h-12 bg-amber-500 text-white rounded-2xl flex items-center justify-center shadow-md shadow-amber-200">
+          <i class="fa-solid fa-house-chimney-window text-2xl"></i>
+        </div>
+        <div>
+          <h1 class="text-xl sm:text-2xl font-bold text-slate-800 flex items-center gap-2">
+            租屋處值日生班表
+            <span class="text-xs bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full font-medium border border-amber-200">5房輪替</span>
+          </h1>
+          <p class="text-xs sm:text-sm text-slate-500">每週日 23:59 簽到截止 | 雲端即時同步</p>
+        </div>
+      </div>
+
+      <!-- Sync & User Status -->
+      <div class="flex items-center space-x-3 w-full md:w-auto justify-between md:justify-end">
+        <div id="connectionBadge" class="flex items-center space-x-2 text-xs px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 border">
+          <span class="w-2 h-2 rounded-full bg-slate-400 animate-pulse" id="statusDot"></span>
+          <span id="statusText">正在連線至雲端...</span>
+        </div>
+        <button onclick="app.refreshData()" class="text-slate-500 hover:text-amber-600 p-2 rounded-xl hover:bg-amber-50 transition" title="重新整理">
+          <i class="fa-solid fa-rotate-right"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Room Completion & Violation Dashboard (NEW Prominent Section) -->
+    <section class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-amber-100 space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+        <div>
+          <h2 class="font-bold text-slate-800 text-base sm:text-lg flex items-center gap-2">
+            <i class="fa-solid fa-shield-heart text-amber-500"></i>
+            各房打掃完成度與違規統計面板
+          </h2>
+          <p class="text-xs text-slate-500">累計至 2027/09 | 禮拜一 00:00 至 禮拜日 23:59 前簽到算按時完成</p>
+        </div>
+        <div class="flex items-center space-x-3 text-xs font-semibold">
+          <span class="inline-flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+            <i class="fa-solid fa-circle text-[10px]"></i> 🟢 按時完成
+          </span>
+          <span class="inline-flex items-center gap-1 text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
+            <i class="fa-solid fa-circle text-[10px]"></i> 🔴 未按時完成/逾期
+          </span>
+        </div>
+      </div>
+
+      <!-- Grid Cards for Room 1 to 5 Stats -->
+      <div id="dashboardRoomGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <!-- Rendered dynamically by app.renderRoomStats() -->
+        <div class="col-span-full text-center py-4 text-slate-400 text-xs">載入統計數據中...</div>
+      </div>
+    </section>
+
+    <!-- Current Week Highlight Banner -->
+    <section id="currentWeekBanner" class="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-5 sm:p-6 text-white shadow-lg shadow-amber-200/50 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-6">
+      <div class="space-y-2">
+        <div class="inline-flex items-center space-x-2 bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-semibold">
+          <i class="fa-solid fa-bell animate-bounce"></i>
+          <span id="bannerWeekTitle">載入中...</span>
+        </div>
+        <div class="text-2xl sm:text-3xl font-extrabold tracking-tight flex items-center gap-3">
+          <span>本週值日房號：</span>
+          <span id="bannerRoomText" class="underline decoration-wavy decoration-amber-200">--</span>
+        </div>
+        <p id="bannerDateRange" class="text-amber-100 text-xs sm:text-sm">--</p>
+      </div>
+
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 border-t md:border-t-0 md:border-l border-white/20 pt-4 md:pt-0 md:pl-6">
+        <div class="text-left sm:text-right pr-2">
+          <div class="text-xs text-amber-100">簽到剩餘時間</div>
+          <div id="countdownTimer" class="text-lg font-bold font-mono">-- 天 -- 小時</div>
+        </div>
+        <button id="quickCheckinBtn" onclick="app.openCheckinModal()" class="bg-white text-amber-600 hover:bg-amber-50 px-6 py-3 rounded-xl font-bold shadow-md hover:shadow-lg transition transform active:scale-95 flex items-center justify-center space-x-2">
+          <i class="fa-solid fa-circle-check text-lg"></i>
+          <span id="quickCheckinBtnText">點我簽到打掃</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Main Content Layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Left Column: Room Overview & Filters -->
+      <div class="space-y-6">
+        <!-- Filter Controls Card -->
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-3">
+          <div class="flex justify-between items-center">
+            <h2 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+              <i class="fa-solid fa-filter text-amber-500"></i>
+              房號視圖快速篩選
+            </h2>
+            <button onclick="app.filterByRoom('all')" class="text-xs text-amber-600 hover:underline font-semibold">重置全選</button>
+          </div>
+          <p class="text-xs text-slate-500">點擊下方房號可僅檢視該房間排班：</p>
+          <div id="roomFilterButtons" class="flex flex-wrap gap-2">
+            <!-- Dynamic room buttons -->
+          </div>
+        </div>
+
+        <!-- System Instructions & Rules Card -->
+        <div class="bg-amber-50/60 rounded-2xl p-5 border border-amber-100 text-xs text-amber-900 space-y-3">
+          <h3 class="font-bold text-sm text-amber-800 flex items-center gap-2">
+            <i class="fa-solid fa-circle-info"></i> 值日生輪值須知
+          </h3>
+          <ul class="list-disc list-inside space-y-1.5 text-amber-800/90 leading-relaxed">
+            <li><strong>輪替順序：</strong>1號房 ➔ 2號房 ➔ 3號房 ➔ 4號房 ➔ 5號房 ➔ 1號房（每週一交接）。</li>
+            <li><strong>彈性簽到時間：</strong>當週禮拜一 00:00 至 禮拜日 23:59 間隨時可完成並點擊簽到。</li>
+            <li><strong>燈號與違規判定：</strong>
+              <div class="mt-1 pl-2 space-y-1">
+                <p><span class="font-bold text-emerald-600">🟢 按時完成：</span>於指定週日 23:59 前點擊簽到。</p>
+                <p><span class="font-bold text-rose-500">🔴 未按時完成：</span>超過指定週日 23:59 仍未簽到，記錄加 1 次違規。</p>
+                <p><span class="font-bold text-amber-500">🟡 當週進行中：</span>本週輪值中，請記得於禮拜日前完成。</p>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Right Column: Interactive Roster & Calendar View -->
+      <div class="lg:col-span-2 space-y-6">
+        
+        <!-- View Control Header -->
+        <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+          
+          <!-- Month Switcher Controls -->
+          <div class="flex items-center space-x-2">
+            <button onclick="app.changeMonth(-1)" class="p-2 rounded-xl border hover:bg-slate-50 text-slate-600 transition">
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <div id="currentMonthLabel" class="text-base sm:text-lg font-bold text-slate-800 min-w-[120px] text-center">
+              2026 年 11 月
+            </div>
+            <button onclick="app.changeMonth(1)" class="p-2 rounded-xl border hover:bg-slate-50 text-slate-600 transition">
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+            <button onclick="app.goToCurrentMonth()" class="text-xs bg-amber-50 text-amber-700 font-semibold px-2.5 py-1.5 rounded-lg border border-amber-200 hover:bg-amber-100 transition ml-2">
+              回到本月
+            </button>
+          </div>
+
+          <!-- Display Mode Toggle -->
+          <div class="flex bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+            <button id="viewBtnCalendar" onclick="app.setViewMode('calendar')" class="px-3 py-1.5 rounded-lg bg-white shadow-sm text-slate-800 transition">
+              <i class="fa-solid fa-calendar-days mr-1"></i> 月曆視圖
+            </button>
+            <button id="viewBtnList" onclick="app.setViewMode('list')" class="px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 transition">
+              <i class="fa-solid fa-list-check mr-1"></i> 週清單視圖
+            </button>
+          </div>
+        </div>
+
+        <!-- Calendar Container -->
+        <div id="calendarViewContainer" class="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-100 overflow-hidden">
+          
+          <!-- Days of Week Header -->
+          <div class="grid grid-cols-7 gap-1 text-center font-bold text-xs sm:text-sm text-slate-400 mb-3 border-b pb-2">
+            <div class="text-rose-500">週一</div>
+            <div>週二</div>
+            <div>週三</div>
+            <div>週四</div>
+            <div>週五</div>
+            <div>週六</div>
+            <div class="text-amber-600">週日</div>
+          </div>
+
+          <!-- Dynamic Monthly Grid -->
+          <div id="calendarGrid" class="grid grid-cols-7 gap-1.5 sm:gap-2">
+            <!-- Rendered JS Grid -->
+          </div>
+        </div>
+
+        <!-- Weekly List Container (Hidden by Default) -->
+        <div id="listViewContainer" class="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-100 hidden space-y-3">
+          <div class="flex justify-between items-center text-xs text-slate-400 pb-2 border-b">
+            <span>該月份所有輪值週數</span>
+            <span>點擊整行可查看詳情或辦理簽到</span>
+          </div>
+          <div id="weeklyList" class="space-y-2.5 max-h-[600px] overflow-y-auto custom-scrollbar pr-1">
+            <!-- Dynamic Weekly Items -->
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <footer class="text-center text-xs text-slate-400 pt-6 pb-2">
+      租屋處值日生管理系統 &copy; 2026-2027 | 雲端同步技術支援
+    </footer>
+
+  </div>
+
+  <!-- Modal: Duty Check-In / Detail View -->
+  <div id="checkinModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-200">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5 transform scale-95 transition-transform duration-200" id="checkinModalCard">
+      
+      <div class="flex justify-between items-start border-b pb-3">
+        <div>
+          <span id="modalWeekBadge" class="text-xs font-semibold bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full">--</span>
+          <h3 id="modalTitle" class="text-xl font-bold text-slate-800 mt-1">值日簽到作業</h3>
+        </div>
+        <button onclick="app.closeModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+          <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+      </div>
+
+      <div class="space-y-4">
+        <!-- Duty Info Box -->
+        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
+          <div class="flex justify-between text-sm">
+            <span class="text-slate-500">當週責任房號：</span>
+            <span id="modalRoomNum" class="font-bold text-amber-600 text-base">-- 號房</span>
+          </div>
+          <div class="flex justify-between text-xs text-slate-500">
+            <span>輪值期間：</span>
+            <span id="modalDateRange" class="font-mono">--</span>
+          </div>
+          <div class="flex justify-between text-xs text-slate-500">
+            <span>簽到截止：</span>
+            <span id="modalDeadline" class="font-mono text-rose-500 font-semibold">--</span>
+          </div>
+          <div class="flex justify-between text-xs text-slate-500 pt-1 border-t border-slate-200">
+            <span>目前狀態：</span>
+            <span id="modalStatusBadge" class="font-bold">--</span>
+          </div>
+        </div>
+
+        <!-- Form Controls (Only shown if pending or updating) -->
+        <div id="modalFormContent" class="space-y-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">簽到人備註 / 備忘錄（可選）：</label>
+            <input type="text" id="checkinNoteInput" placeholder="例如：客廳與垃圾桶已清理完成" class="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition" />
+          </div>
+
+          <div class="bg-amber-50/50 p-3 rounded-xl text-xs text-amber-800 border border-amber-100 flex items-start space-x-2">
+            <i class="fa-solid fa-shield-halved text-amber-500 text-sm mt-0.5"></i>
+            <span>點擊下方簽到後，更新狀態將立即儲存至雲端，並通知所有室友。</span>
+          </div>
+        </div>
+
+        <!-- Completion Info (Shown if already completed) -->
+        <div id="modalCompletedInfo" class="hidden bg-emerald-50 p-4 rounded-2xl border border-emerald-100 text-xs text-emerald-900 space-y-1.5">
+          <div class="font-bold text-emerald-700 flex items-center gap-1.5 text-sm">
+            <i class="fa-solid fa-circle-check text-emerald-500"></i> 已於指定時間內完成簽到
+          </div>
+          <div><strong>簽到時間：</strong><span id="completedTimeText">--</span></div>
+          <div><strong>備註內容：</strong><span id="completedNoteText">無</span></div>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-3 pt-2">
+        <button onclick="app.closeModal()" class="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition text-sm">
+          取消 / 關閉
+        </button>
+        <button id="modalSubmitBtn" onclick="app.submitCheckin()" class="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition text-sm flex items-center justify-center space-x-2">
+          <i class="fa-solid fa-check"></i>
+          <span id="modalSubmitBtnText">確認簽到完成</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Toast Notification Box -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
+
+  <!-- Firebase JavaScript SDK Modular Scripts -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // Global App State & Config
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'rental-duty-roster';
+    
+    // Fallback Firebase Config in case variable is missing
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+      apiKey: "AIzaSyDemoConfigKeyForRentalRoster123",
+      authDomain: "rental-duty-roster.firebaseapp.com",
+      projectId: "rental-duty-roster",
+      storageBucket: "rental-duty-roster.appspot.com",
+      messagingSenderId: "1234567890",
+      appId: "1:1234567890:web:abcdef123456"
+    };
+
+    // Date Bounds Config
+    // Cycle starts from next Monday after Oct 29, 2026 -> Nov 02, 2026
+    const CYCLE_START_DATE = new Date(2026, 10, 2); // Nov 2, 2026 (Month is 0-indexed: 10 = Nov)
+    const CYCLE_END_DATE = new Date(2027, 8, 30);   // Sept 30, 2027
+
+    class DutyRosterApp {
+      constructor() {
+        this.app = null;
+        this.db = null;
+        this.auth = null;
+        this.currentUser = null;
+        
+        // Data Store
+        this.dutyWeeks = [];        // Array of generated week schedule objects
+        this.firestoreRecords = {}; // Hashmap of Firestore checkins keyed by week ID
+        this.selectedFilterRoom = 'all'; // 'all', 1, 2, 3, 4, 5
+        this.viewMode = 'calendar'; // 'calendar' | 'list'
+        
+        // Calendar View Controller State
+        // Default initialized to November 2026 (Start of Schedule)
+        this.currentViewYear = 2026;
+        this.currentViewMonth = 10; // Nov (0-indexed)
+
+        this.selectedWeekIdForModal = null;
+
+        // Initialize App
+        this.initFirebase();
+        this.generateScheduleMasterList();
+        this.startTimer();
+      }
+
+      // Initialize Firebase & Auth
+      async initFirebase() {
+        try {
+          this.updateSyncBadge('loading', '雲端建立連線中...');
+          this.app = initializeApp(firebaseConfig);
+          this.db = getFirestore(this.app);
+          this.auth = getAuth(this.app);
+
+          // Rule 3: Auth Before Queries
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            await signInWithCustomToken(this.auth, __initial_auth_token);
+          } else {
+            await signInAnonymously(this.auth);
+          }
+
+          onAuthStateChanged(this.auth, (user) => {
+            if (user) {
+              this.currentUser = user;
+              this.updateSyncBadge('online', '已連線雲端資料庫');
+              this.listenToFirestore();
+            }
+          });
+
+        } catch (err) {
+          console.warn("Firebase initialized with local state mode:", err);
+          this.updateSyncBadge('offline', '單機範例模式 (無網路)');
+          this.renderUI();
+        }
+      }
+
+      // Rule 1: Strict Paths - Firestore Listener
+      listenToFirestore() {
+        if (!this.db) return;
+        
+        // Firestore Path: /artifacts/{appId}/public/data/checkins
+        const checkinsCollection = collection(this.db, 'artifacts', appId, 'public', 'data', 'checkins');
+
+        onSnapshot(checkinsCollection, 
+          (snapshot) => {
+            this.firestoreRecords = {};
+            snapshot.forEach((docSnap) => {
+              this.firestoreRecords[docSnap.id] = docSnap.data();
+            });
+            this.updateSyncBadge('online', '已同步最新簽到紀錄');
+            this.renderUI();
+          },
+          (error) => {
+            console.error("Firestore listener error:", error);
+            this.updateSyncBadge('offline', '同步發生錯誤');
+            this.renderUI();
+          }
+        );
+      }
+
+      // Update Header Sync Status Badge UI
+      updateSyncBadge(type, text) {
+        const dot = document.getElementById('statusDot');
+        const txt = document.getElementById('statusText');
+        if (!dot || !txt) return;
+
+        txt.innerText = text;
+        dot.className = "w-2 h-2 rounded-full ";
+        if (type === 'online') {
+          dot.className += "bg-emerald-500";
+        } else if (type === 'loading') {
+          dot.className += "bg-amber-400 animate-pulse";
+        } else {
+          dot.className += "bg-rose-500";
+        }
+      }
+
+      // Generate the master weekly roster list from Nov 2, 2026 to Sept 30, 2027
+      generateScheduleMasterList() {
+        this.dutyWeeks = [];
+        let currMonday = new Date(CYCLE_START_DATE);
+        let weekIndex = 0;
+
+        while (currMonday <= CYCLE_END_DATE) {
+          let currSunday = new Date(currMonday);
+          currSunday.setDate(currSunday.getDate() + 6);
+          currSunday.setHours(23, 59, 59, 999);
+
+          // Room calculation: Room 1 to 5 cycling
+          const roomNumber = (weekIndex % 5) + 1;
+          
+          // Formatted week ID e.g. "week_2026-11-02"
+          const weekId = `week_${this.formatDateYYYYMMDD(currMonday)}`;
+
+          this.dutyWeeks.push({
+            id: weekId,
+            weekIndex: weekIndex,
+            roomNumber: roomNumber,
+            startDate: new Date(currMonday),
+            endDate: new Date(currSunday),
+            deadline: new Date(currSunday)
+          });
+
+          // Next week's Monday
+          currMonday.setDate(currMonday.getDate() + 7);
+          weekIndex++;
+        }
+      }
+
+      // Calculate status dynamically based on current time & Firestore records
+      getWeekStatus(week) {
+        const record = this.firestoreRecords[week.id];
+        
+        // If checked in record exists
+        if (record && record.completed) {
+          const completedAtTime = record.completedAt ? new Date(record.completedAt) : new Date(0);
+          
+          // Checked in on time (on or before Sunday 23:59:59)
+          if (completedAtTime <= week.deadline) {
+            return { code: 'completed', label: '按時完成', color: 'emerald', icon: 'fa-circle-check' };
+          } else {
+            // Checked in late after deadline
+            return { code: 'completed_late', label: '逾期簽到', color: 'rose', icon: 'fa-circle-exclamation' };
+          }
+        }
+
+        const now = new Date();
+
+        // If past Sunday 23:59:59 and NOT completed -> OVERDUE (Red)
+        if (now > week.deadline) {
+          return { code: 'overdue', label: '未按時完成', color: 'rose', icon: 'fa-circle-xmark' };
+        }
+
+        // If currently within this week's Monday to Sunday -> IN PROGRESS (Yellow)
+        if (now >= week.startDate && now <= week.deadline) {
+          return { code: 'current', label: '當週進行中', color: 'amber', icon: 'fa-spinner' };
+        }
+
+        // Future Week -> PENDING (Gray/Blue)
+        return { code: 'pending', label: '待輪值', color: 'slate', icon: 'fa-clock' };
+      }
+
+      // Main Render Coordinator
+      renderUI() {
+        this.renderCurrentWeekBanner();
+        this.renderRoomDashboard();
+        this.renderRoomFilterButtons();
+        if (this.viewMode === 'calendar') {
+          this.renderCalendarView();
+        } else {
+          this.renderListView();
+        }
+      }
+
+      // Render Top Dashboard for Room Statistics & Overdue Counter
+      renderRoomDashboard() {
+        const dashboardGrid = document.getElementById('dashboardRoomGrid');
+        if (!dashboardGrid) return;
+
+        const now = new Date();
+        let html = '';
+
+        for (let room = 1; room <= 5; room++) {
+          const roomWeeks = this.dutyWeeks.filter(w => w.roomNumber === room);
+          
+          // Total weeks that have reached deadline or have been checked in
+          const pastDueWeeks = roomWeeks.filter(w => w.deadline <= now || (this.firestoreRecords[w.id] && this.firestoreRecords[w.id].completed));
+          
+          // On-time completion count (checked in before or on Sunday 23:59:59)
+          const onTimeCount = roomWeeks.filter(w => {
+            const st = this.getWeekStatus(w);
+            return st.code === 'completed';
+          }).length;
+
+          // Missed / Overdue count (passed Sunday deadline without check-in OR checked in after deadline)
+          const overdueCount = roomWeeks.filter(w => {
+            const st = this.getWeekStatus(w);
+            return st.code === 'overdue' || st.code === 'completed_late';
+          }).length;
+
+          const totalAssigned = roomWeeks.length;
+          const evaluatedTotal = pastDueWeeks.length;
+          
+          // Completion Rate Percentage calculation
+          const ratePercent = evaluatedTotal > 0 ? Math.round((onTimeCount / evaluatedTotal) * 100) : 100;
+
+          const isSelected = this.selectedFilterRoom === room;
+
+          html += `
+            <div onclick="app.filterByRoom(${room})" class="p-3.5 rounded-2xl border transition cursor-pointer flex flex-col justify-between space-y-3 relative overflow-hidden ${
+              isSelected ? 'bg-amber-100/80 border-amber-400 ring-2 ring-amber-400/40 shadow-sm' : 'bg-slate-50 border-slate-100 hover:bg-slate-100/80 hover:border-slate-200'
+            }">
+              
+              <!-- Header Room Title & Selection Indicator -->
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <div class="w-8 h-8 rounded-xl ${isSelected ? 'bg-amber-500 text-white' : 'bg-slate-800 text-white'} font-bold text-sm flex items-center justify-center shadow-xs">
+                    ${room}
+                  </div>
+                  <div>
+                    <div class="font-extrabold text-sm text-slate-800">${room} 號房</div>
+                    <div class="text-[10px] text-slate-400">總排班 ${totalAssigned} 週</div>
+                  </div>
+                </div>
+                ${overdueCount > 0 ? `
+                  <span class="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-full border border-rose-200 animate-pulse">
+                    ⚠️ 違規 ${overdueCount} 次
+                  </span>
+                ` : `
+                  <span class="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                    良好
+                  </span>
+                `}
+              </div>
+
+              <!-- On-time vs Overdue Counts -->
+              <div class="grid grid-cols-2 gap-2 text-center pt-1 border-t border-slate-200/60">
+                <div class="bg-white/80 p-1.5 rounded-xl border border-slate-100">
+                  <div class="text-[10px] text-slate-500">🟢 按時完成</div>
+                  <div class="text-base font-extrabold text-emerald-600">${onTimeCount} <span class="text-[10px] font-normal text-slate-400">次</span></div>
+                </div>
+                <div class="bg-white/80 p-1.5 rounded-xl border border-slate-100">
+                  <div class="text-[10px] text-slate-500">🔴 未按時完成</div>
+                  <div class="text-base font-extrabold ${overdueCount > 0 ? 'text-rose-600' : 'text-slate-400'}">${overdueCount} <span class="text-[10px] font-normal text-slate-400">次</span></div>
+                </div>
+              </div>
+
+              <!-- Rate Progress Bar -->
+              <div class="space-y-1">
+                <div class="flex justify-between text-[10px] font-bold text-slate-600">
+                  <span>準時達成率</span>
+                  <span class="${ratePercent >= 80 ? 'text-emerald-600' : 'text-rose-600'}">${ratePercent}%</span>
+                </div>
+                <div class="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                  <div class="h-1.5 rounded-full ${ratePercent >= 80 ? 'bg-emerald-500' : 'bg-rose-500'}" style="width: ${ratePercent}%"></div>
+                </div>
+              </div>
+
+            </div>
+          `;
+        }
+
+        dashboardGrid.innerHTML = html;
+      }
+
+      // Render filter buttons on left sidebar
+      renderRoomFilterButtons() {
+        const container = document.getElementById('roomFilterButtons');
+        if (!container) return;
+
+        let html = '';
+        for (let r = 1; r <= 5; r++) {
+          const active = this.selectedFilterRoom === r;
+          html += `
+            <button onclick="app.filterByRoom(${r})" class="px-3 py-1.5 rounded-xl font-bold text-xs transition ${
+              active ? 'bg-amber-500 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }">
+              ${r} 號房
+            </button>
+          `;
+        }
+        container.innerHTML = html;
+      }
+
+      // Backward compatibility method for room stats
+      renderRoomStats() {
+        this.renderRoomDashboard();
+      }
+
+      // Main Render Coordinator
+      renderUI() {
+        this.renderCurrentWeekBanner();
+        this.renderRoomDashboard();
+        if (this.viewMode === 'calendar') {
+          this.renderCalendarView();
+        } else {
+          this.renderListView();
+        }
+      }
+
+      // Render Current Week Banner & Countdown
+      renderCurrentWeekBanner() {
+        const now = new Date();
+        // Find current week object or nearest week
+        let currentWeek = this.dutyWeeks.find(w => now >= w.startDate && now <= w.deadline);
+
+        if (!currentWeek) {
+          // If before start date
+          if (now < CYCLE_START_DATE) {
+            currentWeek = this.dutyWeeks[0]; // Nov 2, 2026 week
+          } else {
+            currentWeek = this.dutyWeeks[this.dutyWeeks.length - 1];
+          }
+        }
+
+        const status = this.getWeekStatus(currentWeek);
+
+        document.getElementById('bannerWeekTitle').innerText = `第 ${currentWeek.weekIndex + 1} 週輪值`;
+        document.getElementById('bannerRoomText').innerText = `${currentWeek.roomNumber} 號房`;
+        document.getElementById('bannerDateRange').innerText = `期間：${this.formatDateShort(currentWeek.startDate)} ~ ${this.formatDateShort(currentWeek.endDate)}`;
+
+        const quickBtnText = document.getElementById('quickCheckinBtnText');
+        const quickBtn = document.getElementById('quickCheckinBtn');
+
+        if (status.code === 'completed') {
+          quickBtnText.innerText = "本週已完成簽到";
+          quickBtn.className = "bg-emerald-100 text-emerald-800 px-6 py-3 rounded-xl font-bold shadow-md cursor-pointer flex items-center justify-center space-x-2 hover:bg-emerald-200 transition";
+        } else if (status.code === 'overdue') {
+          quickBtnText.innerText = "補簽本週打掃";
+          quickBtn.className = "bg-rose-500 text-white hover:bg-rose-600 px-6 py-3 rounded-xl font-bold shadow-md cursor-pointer flex items-center justify-center space-x-2 transition animate-pulse";
+        } else {
+          quickBtnText.innerText = "點我簽到打掃";
+          quickBtn.className = "bg-white text-amber-600 hover:bg-amber-50 px-6 py-3 rounded-xl font-bold shadow-md hover:shadow-lg transition flex items-center justify-center space-x-2";
+        }
+
+        this.updateCountdown(currentWeek.deadline);
+      }
+
+      // Update Countdown Timer to Sunday Deadline
+      updateCountdown(deadline) {
+        const now = new Date();
+        const diffMs = deadline - now;
+        const timerEl = document.getElementById('countdownTimer');
+
+        if (diffMs <= 0) {
+          timerEl.innerText = "已截止";
+          return;
+        }
+
+        const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+        if (days > 0) {
+          timerEl.innerText = `${days} 天 ${hours} 小時`;
+        } else {
+          timerEl.innerText = `${hours} 小時 ${mins} 分鐘`;
+        }
+      }
+
+      startTimer() {
+        setInterval(() => {
+          const now = new Date();
+          let currentWeek = this.dutyWeeks.find(w => now >= w.startDate && now <= w.deadline) || this.dutyWeeks[0];
+          if (currentWeek) this.updateCountdown(currentWeek.deadline);
+        }, 60000);
+      }
+
+      // Render Left Panel Room Stats
+      renderRoomStats() {
+        const roomStatsContainer = document.getElementById('roomStatsList');
+        if (!roomStatsContainer) return;
+
+        let html = '';
+        const now = new Date();
+
+        for (let room = 1; room <= 5; room++) {
+          const roomWeeks = this.dutyWeeks.filter(w => w.roomNumber === room);
+          // Only evaluate completed or past weeks for accurate rates
+          const pastOrCurrentWeeks = roomWeeks.filter(w => w.startDate <= now || (this.firestoreRecords[w.id] && this.firestoreRecords[w.id].completed));
+          const completedCount = roomWeeks.filter(w => this.firestoreRecords[w.id] && this.firestoreRecords[w.id].completed).length;
+          const overdueCount = roomWeeks.filter(w => {
+            const st = this.getWeekStatus(w);
+            return st.code === 'overdue';
+          }).length;
+
+          const totalAssigned = roomWeeks.length;
+          const isSelected = this.selectedFilterRoom === room;
+
+          html += `
+            <div onclick="app.filterByRoom(${room})" class="p-3 rounded-xl border transition cursor-pointer flex items-center justify-between ${
+              isSelected ? 'bg-amber-100/70 border-amber-300 ring-2 ring-amber-400/30' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'
+            }">
+              <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 rounded-lg ${isSelected ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-700'} font-bold text-sm flex items-center justify-center">
+                  ${room}
+                </div>
+                <div>
+                  <div class="font-bold text-xs text-slate-800">${room} 號房</div>
+                  <div class="text-[10px] text-slate-500">共排班 ${totalAssigned} 週</div>
+                </div>
+              </div>
+
+              <div class="flex items-center space-x-2 text-xs">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold" title="按時完成次數">
+                  <i class="fa-solid fa-check text-[10px] mr-1"></i>${completedCount}
+                </span>
+                ${overdueCount > 0 ? `
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-semibold" title="逾期未簽次數">
+                    <i class="fa-solid fa-xmark text-[10px] mr-1"></i>${overdueCount}
+                  </span>
+                ` : ''}
+              </div>
+            </div>
+          `;
+        }
+
+        // Add "All Rooms" reset option button
+        html += `
+          <button onclick="app.filterByRoom('all')" class="w-full text-center py-2 text-xs text-amber-700 font-semibold hover:underline ${this.selectedFilterRoom === 'all' ? 'hidden' : 'block'}">
+            顯示所有房號班表
+          </button>
+        `;
+
+        roomStatsContainer.innerHTML = html;
+      }
+
+      // Filter by room callback
+      filterByRoom(room) {
+        if (this.selectedFilterRoom === room) {
+          this.selectedFilterRoom = 'all';
+        } else {
+          this.selectedFilterRoom = room;
+        }
+        this.renderUI();
+      }
+
+      // Render Month Calendar View
+      renderCalendarView() {
+        const gridContainer = document.getElementById('calendarGrid');
+        const monthLabel = document.getElementById('currentMonthLabel');
+        if (!gridContainer || !monthLabel) return;
+
+        monthLabel.innerText = `${this.currentViewYear} 年 ${this.currentViewMonth + 1} 月`;
+
+        gridContainer.innerHTML = '';
+
+        // Get first day and days count for the view month
+        const firstDayOfMonth = new Date(this.currentViewYear, this.currentViewMonth, 1);
+        const lastDayOfMonth = new Date(this.currentViewYear, this.currentViewMonth + 1, 0);
+        
+        // Monday as first day of week (0 = Mon, 6 = Sun)
+        let startingDayOfWeek = firstDayOfMonth.getDay() - 1;
+        if (startingDayOfWeek === -1) startingDayOfWeek = 6; // Sunday becomes 6
+
+        // Blank days padding before 1st of month
+        for (let i = 0; i < startingDayOfWeek; i++) {
+          const emptyCell = document.createElement('div');
+          emptyCell.className = "bg-slate-50/50 rounded-xl min-h-[75px] sm:min-h-[90px] border border-dashed border-slate-100";
+          gridContainer.appendChild(emptyCell);
+        }
+
+        const today = new Date();
+
+        // Days of current month
+        for (let dateNum = 1; dateNum <= lastDayOfMonth.getDate(); dateNum++) {
+          const currentCellDate = new Date(this.currentViewYear, this.currentViewMonth, dateNum);
+          
+          // Find which duty week this specific date falls into
+          const matchedWeek = this.dutyWeeks.find(w => currentCellDate >= w.startDate && currentCellDate <= w.endDate);
+
+          const isToday = currentCellDate.toDateString() === today.toDateString();
+          const isFilterActive = this.selectedFilterRoom !== 'all';
+          const isMatchedRoom = matchedWeek && (matchedWeek.roomNumber === this.selectedFilterRoom);
+
+          const dateCell = document.createElement('div');
+          dateCell.className = `rounded-xl p-1.5 sm:p-2 min-h-[75px] sm:min-h-[95px] border flex flex-col justify-between transition relative ${
+            isToday ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-300/40' : 'bg-white border-slate-100 hover:border-amber-200'
+          } ${isFilterActive && !isMatchedRoom ? 'opacity-35' : 'opacity-100'}`;
+
+          // Top line: Day number
+          let cellHTML = `
+            <div class="flex justify-between items-center text-xs font-semibold">
+              <span class="${isToday ? 'bg-amber-500 text-white rounded-full w-5 h-5 flex items-center justify-center font-bold' : 'text-slate-700'}">${dateNum}</span>
+              ${isToday ? '<span class="text-[9px] text-amber-700 font-bold hidden sm:inline">今天</span>' : ''}
+            </div>
+          `;
+
+          // Duty Room Badge logic (Render badge on Mondays or every day for clear mobile view)
+          if (matchedWeek) {
+            const status = this.getWeekStatus(matchedWeek);
+            const isMonday = currentCellDate.getDay() === 1;
+
+            let badgeBg = "bg-slate-100 text-slate-700";
+            let dotBg = "bg-slate-400";
+
+            if (status.code === 'completed') {
+              badgeBg = "bg-emerald-100 text-emerald-800 border-emerald-200";
+              dotBg = "bg-emerald-500";
+            } else if (status.code === 'overdue') {
+              badgeBg = "bg-rose-100 text-rose-800 border-rose-200";
+              dotBg = "bg-rose-500";
+            } else if (status.code === 'current') {
+              badgeBg = "bg-amber-100 text-amber-900 border-amber-300 font-bold";
+              dotBg = "bg-amber-500 animate-pulse";
+            }
+
+            cellHTML += `
+              <div onclick="app.openCheckinModal('${matchedWeek.id}')" class="mt-1 cursor-pointer p-1 rounded-lg border text-[11px] ${badgeBg} hover:shadow-sm transition group">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full ${dotBg}"></span>
+                    ${matchedWeek.roomNumber}號房
+                  </span>
+                  <i class="fa-solid fa-chevron-right text-[8px] opacity-0 group-hover:opacity-100 transition"></i>
+                </div>
+                ${isMonday ? `<div class="text-[9px] scale-90 origin-left text-slate-500 hidden sm:block">第${matchedWeek.weekIndex + 1}週起</div>` : ''}
+              </div>
+            `;
+          }
+
+          dateCell.innerHTML = cellHTML;
+          gridContainer.appendChild(dateCell);
+        }
+      }
+
+      // Render Weekly List View
+      renderListView() {
+        const listContainer = document.getElementById('weeklyList');
+        if (!listContainer) return;
+
+        // Filter weeks belonging to current view month
+        const weeksInMonth = this.dutyWeeks.filter(w => {
+          return (w.startDate.getFullYear() === this.currentViewYear && w.startDate.getMonth() === this.currentViewMonth) ||
+                 (w.endDate.getFullYear() === this.currentViewYear && w.endDate.getMonth() === this.currentViewMonth);
+        });
+
+        if (weeksInMonth.length === 0) {
+          listContainer.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">此月份無排班紀錄</div>`;
+          return;
+        }
+
+        let html = '';
+        weeksInMonth.forEach(week => {
+          if (this.selectedFilterRoom !== 'all' && week.roomNumber !== this.selectedFilterRoom) return;
+
+          const status = this.getWeekStatus(week);
+          const record = this.firestoreRecords[week.id];
+
+          let badgeStyle = "bg-slate-100 text-slate-600";
+          let badgeIcon = "fa-clock";
+
+          if (status.code === 'completed') {
+            badgeStyle = "bg-emerald-100 text-emerald-800 border border-emerald-200";
+            badgeIcon = "fa-circle-check";
+          } else if (status.code === 'overdue') {
+            badgeStyle = "bg-rose-100 text-rose-800 border border-rose-200";
+            badgeIcon = "fa-triangle-exclamation";
+          } else if (status.code === 'current') {
+            badgeStyle = "bg-amber-100 text-amber-800 border border-amber-200 font-bold";
+            badgeIcon = "fa-spinner animate-spin";
+          }
+
+          html += `
+            <div onclick="app.openCheckinModal('${week.id}')" class="p-4 rounded-2xl border border-slate-100 bg-white hover:border-amber-300 hover:shadow-md transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 font-bold text-base flex items-center justify-center border border-amber-100">
+                  ${week.roomNumber}
+                </div>
+                <div>
+                  <div class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                    第 ${week.weekIndex + 1} 週 - ${week.roomNumber} 號房值日
+                  </div>
+                  <div class="text-xs text-slate-500 font-mono">
+                    ${this.formatDateShort(week.startDate)} (一) ~ ${this.formatDateShort(week.endDate)} (日)
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between sm:justify-end space-x-3">
+                <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs ${badgeStyle}">
+                  <i class="fa-solid ${badgeIcon}"></i>
+                  <span>${status.label}</span>
+                </span>
+                <i class="fa-solid fa-chevron-right text-slate-300 text-xs"></i>
+              </div>
+            </div>
+          `;
+        });
+
+        listContainer.innerHTML = html;
+      }
+
+      // Switch Months
+      changeMonth(delta) {
+        this.currentViewMonth += delta;
+        if (this.currentViewMonth > 11) {
+          this.currentViewMonth = 0;
+          this.currentViewYear += 1;
+        } else if (this.currentViewMonth < 0) {
+          this.currentViewMonth = 11;
+          this.currentViewYear -= 1;
+        }
+        this.renderUI();
+      }
+
+      goToCurrentMonth() {
+        const today = new Date();
+        this.currentViewYear = today.getFullYear();
+        this.currentViewMonth = today.getMonth();
+        this.renderUI();
+      }
+
+      // View Mode Toggle
+      setViewMode(mode) {
+        this.viewMode = mode;
+        const calContainer = document.getElementById('calendarViewContainer');
+        const listContainer = document.getElementById('listViewContainer');
+        const btnCal = document.getElementById('viewBtnCalendar');
+        const btnList = document.getElementById('viewBtnList');
+
+        if (mode === 'calendar') {
+          calContainer.classList.remove('hidden');
+          listContainer.classList.add('hidden');
+          btnCal.className = "px-3 py-1.5 rounded-lg bg-white shadow-sm text-slate-800 transition font-bold";
+          btnList.className = "px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 transition font-normal";
+        } else {
+          calContainer.classList.add('hidden');
+          listContainer.classList.remove('hidden');
+          btnList.className = "px-3 py-1.5 rounded-lg bg-white shadow-sm text-slate-800 transition font-bold";
+          btnCal.className = "px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 transition font-normal";
+        }
+        this.renderUI();
+      }
+
+      // Open Check-in Modal Dialog
+      openCheckinModal(weekId) {
+        const now = new Date();
+        let targetWeek = weekId ? this.dutyWeeks.find(w => w.id === weekId) : null;
+
+        if (!targetWeek) {
+          // Default to current week
+          targetWeek = this.dutyWeeks.find(w => now >= w.startDate && now <= w.deadline) || this.dutyWeeks[0];
+        }
+
+        this.selectedWeekIdForModal = targetWeek.id;
+        const status = this.getWeekStatus(targetWeek);
+        const record = this.firestoreRecords[targetWeek.id];
+
+        // Populate Modal Fields
+        document.getElementById('modalWeekBadge').innerText = `第 ${targetWeek.weekIndex + 1} 週輪值`;
+        document.getElementById('modalRoomNum').innerText = `${targetWeek.roomNumber} 號房`;
+        document.getElementById('modalDateRange').innerText = `${this.formatDateShort(targetWeek.startDate)} ~ ${this.formatDateShort(targetWeek.endDate)}`;
+        document.getElementById('modalDeadline').innerText = `${this.formatDateShort(targetWeek.deadline)} 23:59`;
+
+        const statusBadge = document.getElementById('modalStatusBadge');
+        statusBadge.innerText = status.label;
+        statusBadge.className = `font-bold ${status.code === 'completed' ? 'text-emerald-600' : status.code === 'overdue' ? 'text-rose-600' : 'text-amber-600'}`;
+
+        const formContent = document.getElementById('modalFormContent');
+        const completedInfo = document.getElementById('modalCompletedInfo');
+        const submitBtn = document.getElementById('modalSubmitBtn');
+        const noteInput = document.getElementById('checkinNoteInput');
+
+        noteInput.value = '';
+
+        if (status.code === 'completed' && record) {
+          formContent.classList.add('hidden');
+          completedInfo.classList.remove('hidden');
+          submitBtn.classList.add('hidden');
+
+          document.getElementById('completedTimeText').innerText = record.completedAt ? new Date(record.completedAt).toLocaleString('zh-TW') : '已完成';
+          document.getElementById('completedNoteText').innerText = record.note || '無備註';
+        } else {
+          formContent.classList.remove('hidden');
+          completedInfo.classList.add('hidden');
+          submitBtn.classList.remove('hidden');
+          document.getElementById('modalSubmitBtnText').innerText = status.code === 'overdue' ? "進行過期補簽" : "確認簽到完成";
+        }
+
+        // Show Modal with smooth transition
+        const modal = document.getElementById('checkinModal');
+        const modalCard = document.getElementById('checkinModalCard');
+        modal.classList.remove('opacity-0', 'pointer-events-none');
+        modalCard.classList.remove('scale-95');
+        modalCard.classList.add('scale-100');
+      }
+
+      closeModal() {
+        const modal = document.getElementById('checkinModal');
+        const modalCard = document.getElementById('checkinModalCard');
+        modal.classList.add('opacity-0', 'pointer-events-none');
+        modalCard.classList.remove('scale-100');
+        modalCard.classList.add('scale-95');
+      }
+
+      // Submit Checkin to Firestore (Rule 1 & Rule 3 compliant)
+      async submitCheckin() {
+        if (!this.selectedWeekIdForModal) return;
+
+        const targetWeek = this.dutyWeeks.find(w => w.id === this.selectedWeekIdForModal);
+        if (!targetWeek) return;
+
+        const noteText = document.getElementById('checkinNoteInput').value.trim();
+        const submitBtn = document.getElementById('modalSubmitBtn');
+
+        submitBtn.disabled = true;
+        submitBtn.innerText = "同步寫入中...";
+
+        const payload = {
+          weekId: targetWeek.id,
+          roomNumber: targetWeek.roomNumber,
+          completed: true,
+          completedAt: new Date().toISOString(),
+          note: noteText || "打掃完成",
+          updatedByUid: this.currentUser ? this.currentUser.uid : 'anonymous'
+        };
+
+        try {
+          if (this.db) {
+            // Rule 1: /artifacts/{appId}/public/data/checkins/{weekId}
+            const checkinDocRef = doc(this.db, 'artifacts', appId, 'public', 'data', 'checkins', targetWeek.id);
+            await setDoc(checkinDocRef, payload, { merge: true });
+            this.showToast(`🎉 ${targetWeek.roomNumber} 號房簽到成功！已即時雲端同步。`);
+          } else {
+            // Fallback for standalone/offline mode
+            this.firestoreRecords[targetWeek.id] = payload;
+            this.showToast("簽到成功！（單機模擬模式）");
+            this.renderUI();
+          }
+          this.closeModal();
+        } catch (err) {
+          console.error("Firestore Write Error:", err);
+          this.showToast("簽到失敗，請檢查網路連線", "error");
+        } finally {
+          submitBtn.disabled = false;
+        }
+      }
+
+      refreshData() {
+        this.showToast("正在重新同步最新班表資料...");
+        this.renderUI();
+      }
+
+      // Toast Notification Helper
+      showToast(message, type = 'success') {
+        const container = document.getElementById('toastContainer');
+        if (!container) return;
+
+        const toast = document.createElement('div');
+        toast.className = `p-4 rounded-xl shadow-lg border text-sm font-semibold flex items-center space-x-2 pointer-events-auto transform transition duration-300 translate-y-2 opacity-0 ${
+          type === 'success' ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-rose-600 text-white border-rose-500'
+        }`;
+
+        toast.innerHTML = `
+          <i class="fa-solid ${type === 'success' ? 'fa-circle-check' : 'fa-circle-xmark'} text-lg"></i>
+          <span>${message}</span>
+        `;
+
+        container.appendChild(toast);
+
+        // Animate in
+        requestAnimationFrame(() => {
+          toast.classList.remove('translate-y-2', 'opacity-0');
+        });
+
+        setTimeout(() => {
+          toast.classList.add('opacity-0', 'translate-y-2');
+          setTimeout(() => toast.remove(), 300);
+        }, 3500);
+      }
+
+      // Utility Formatters
+      formatDateYYYYMMDD(d) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+
+      formatDateShort(d) {
+        return `${d.getMonth() + 1}/${d.getDate()}`;
+      }
+    }
+
+    // Attach App Instance to Window
+    window.addEventListener('DOMContentLoaded', () => {
+      window.app = new DutyRosterApp();
+    });
+  </script>
+</body>
+</html>
