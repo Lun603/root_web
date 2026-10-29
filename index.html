@@ -63,6 +63,20 @@
       </div>
     </header>
 
+    <!-- GitHub Firebase Setup Notice (Only visible if Firebase Config is unset) -->
+    <div id="githubSetupNotice" class="hidden bg-amber-50 border-2 border-dashed border-amber-300 rounded-2xl p-4 text-xs text-amber-900 space-y-2">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2 font-bold text-sm text-amber-800">
+          <i class="fa-brands fa-github text-base"></i>
+          <span>GitHub 部署提示：請設定您的 Firebase 專案金鑰</span>
+        </div>
+        <button onclick="document.getElementById('githubSetupNotice').classList.add('hidden')" class="text-amber-600 hover:text-amber-800 font-bold text-xs">隱藏提示</button>
+      </div>
+      <p class="leading-relaxed">
+        您目前正透過 GitHub Pages 或獨立網站開啟此頁面。若要讓全體室友跨裝置雲端同步簽到，請至 <code class="bg-amber-200/60 px-1.5 py-0.5 rounded font-mono">index.html</code> 中將 <code class="bg-amber-200/60 px-1.5 py-0.5 rounded font-mono">myFirebaseConfig</code> 替換為您的 Firebase Web 設定金鑰。
+      </p>
+    </div>
+
     <!-- Room Completion & Violation Dashboard (NEW Prominent Section) -->
     <section class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-amber-100 space-y-4">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
@@ -310,18 +324,25 @@
     import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, doc, setDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // Global App State & Config
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'rental-duty-roster';
-    
-    // Fallback Firebase Config in case variable is missing
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-      apiKey: "AIzaSyDemoConfigKeyForRentalRoster123",
-      authDomain: "rental-duty-roster.firebaseapp.com",
-      projectId: "rental-duty-roster",
-      storageBucket: "rental-duty-roster.appspot.com",
-      messagingSenderId: "1234567890",
-      appId: "1:1234567890:web:abcdef123456"
+    // =========================================================================
+    // 🛠️ 已連結您的 Firebase 專案 (rootweb-b8098)
+    // =========================================================================
+    const myFirebaseConfig = {
+      apiKey: "AIzaSyAWtBUHI5AMvYu_gXiNG_0qOKp_QwWqARI",
+      authDomain: "rootweb-b8098.firebaseapp.com",
+      projectId: "rootweb-b8098",
+      storageBucket: "rootweb-b8098.firebasestorage.app",
+      messagingSenderId: "138020839114",
+      appId: "1:138020839114:web:0a5bd8737ed3872d829e33",
+      measurementId: "G-1Y27D8XLJT"
     };
+
+    // 優先使用平台環境變數，若部署於 GitHub 則自動採用上方 myFirebaseConfig
+    const firebaseConfig = typeof __firebase_config !== 'undefined' 
+      ? JSON.parse(__firebase_config) 
+      : myFirebaseConfig;
+
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'rental-duty-roster';
 
     // Date Bounds Config
     // Cycle starts from next Monday after Oct 29, 2026 -> Nov 02, 2026
@@ -342,7 +363,6 @@
         this.viewMode = 'calendar'; // 'calendar' | 'list'
         
         // Calendar View Controller State
-        // Default initialized to November 2026 (Start of Schedule)
         this.currentViewYear = 2026;
         this.currentViewMonth = 10; // Nov (0-indexed)
 
@@ -358,11 +378,21 @@
       async initFirebase() {
         try {
           this.updateSyncBadge('loading', '雲端建立連線中...');
+
+          // 檢查是否部署在 GitHub 且尚未設定自己的 Firebase 金鑰
+          if (firebaseConfig.apiKey === "YOUR_FIREBASE_API_KEY") {
+            const notice = document.getElementById('githubSetupNotice');
+            if (notice) notice.classList.remove('hidden');
+            this.updateSyncBadge('offline', '請填寫 Firebase 設定檔 (GitHub 模式)');
+            this.renderUI();
+            return;
+          }
+
           this.app = initializeApp(firebaseConfig);
           this.db = getFirestore(this.app);
           this.auth = getAuth(this.app);
 
-          // Rule 3: Auth Before Queries
+          // Auth Before Queries
           if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
             await signInWithCustomToken(this.auth, __initial_auth_token);
           } else {
@@ -372,40 +402,44 @@
           onAuthStateChanged(this.auth, (user) => {
             if (user) {
               this.currentUser = user;
-              this.updateSyncBadge('online', '已連線雲端資料庫');
+              this.updateSyncBadge('online', '已連線至您的 Firebase 資料庫');
               this.listenToFirestore();
             }
           });
 
         } catch (err) {
           console.warn("Firebase initialized with local state mode:", err);
-          this.updateSyncBadge('offline', '單機範例模式 (無網路)');
+          this.updateSyncBadge('offline', '連線失敗 (請檢查 Firebase 設定)');
           this.renderUI();
         }
       }
 
-      // Rule 1: Strict Paths - Firestore Listener
+      // Strict Paths - Firestore Listener
       listenToFirestore() {
         if (!this.db) return;
-        
-        // Firestore Path: /artifacts/{appId}/public/data/checkins
-        const checkinsCollection = collection(this.db, 'artifacts', appId, 'public', 'data', 'checkins');
 
-        onSnapshot(checkinsCollection, 
-          (snapshot) => {
-            this.firestoreRecords = {};
-            snapshot.forEach((docSnap) => {
-              this.firestoreRecords[docSnap.id] = docSnap.data();
-            });
-            this.updateSyncBadge('online', '已同步最新簽到紀錄');
-            this.renderUI();
-          },
-          (error) => {
-            console.error("Firestore listener error:", error);
-            this.updateSyncBadge('offline', '同步發生錯誤');
-            this.renderUI();
-          }
-        );
+        try {
+          const checkinsRef = collection(this.db, 'artifacts', appId, 'public', 'data', 'checkins');
+          onSnapshot(
+            checkinsRef,
+            (snapshot) => {
+              this.firestoreRecords = {};
+              snapshot.forEach((doc) => {
+                this.firestoreRecords[doc.id] = doc.data();
+              });
+              this.updateSyncBadge('online', '雲端資料已即時同步');
+              this.renderUI();
+            },
+            (error) => {
+              console.error("Firestore Listen Error:", error);
+              this.updateSyncBadge('offline', '同步發生錯誤');
+              this.renderUI();
+            }
+          );
+        } catch (err) {
+          console.error("Error setting up listener:", err);
+          this.updateSyncBadge('offline', '資料庫監聽設定失敗');
+        }
       }
 
       // Update Header Sync Status Badge UI
@@ -610,22 +644,6 @@
           `;
         }
         container.innerHTML = html;
-      }
-
-      // Backward compatibility method for room stats
-      renderRoomStats() {
-        this.renderRoomDashboard();
-      }
-
-      // Main Render Coordinator
-      renderUI() {
-        this.renderCurrentWeekBanner();
-        this.renderRoomDashboard();
-        if (this.viewMode === 'calendar') {
-          this.renderCalendarView();
-        } else {
-          this.renderListView();
-        }
       }
 
       // Render Current Week Banner & Countdown
